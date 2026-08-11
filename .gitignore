@@ -1,7 +1,9 @@
-# 书籍文件（太大）
+# 书籍文件（太大，排除内容保留目录结构）
 books/
-books_medical/
-books_history/
+books_medical/*
+!books_medical/.gitkeep
+books_history/*
+!books_history/.gitkeep
 
 # 输出
 process_book.log
@@ -12,8 +14,3 @@ process_book.log
 __pycache__/
 *.pyc
 .venv/
-# 排除书籍内容，保留目录结构
-books_medical/*
-!books_medical/.gitkeep
-books_history/*
-!books_history/.gitkeep
