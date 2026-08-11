@@ -1,0 +1,47 @@
+# ── 历史类书籍配置 ──
+domain: "history"
+book_dir: "../books_history"
+output_dir: "Book Notes"
+meta_file: "../metadata_history.yaml"
+
+# ── 模型 ──
+extract_model: "qwen3.6:35b-mlx"
+http_timeout: 300
+keep_alive: "5m"
+
+# ── 预处理 ──
+model_warmup: true
+
+# ── Prompt ──
+stage1_prompt: "../prompts/history_stage1.txt"
+
+# ── 清洗 ──
+max_chars_per_chapter: 30000
+child_chunk_size: 5000
+child_chunk_overlap: 500
+max_retries: 3
+
+# ── 结构化数据 ──
+structured_data: true
+gen_mermaid: true
+
+# ── Metadata 字段 ──
+metadata_fields:
+  cite_key:        { required: true }
+  title:           { required: true }
+  title_zh:        { required: true }
+  authors:         { required: true }
+  year:            { required: true }
+  publisher:       { required: false }
+  book_type:       { required: true }
+  era:             { required: false }
+  dynasty:         { required: false }
+
+# ── 后处理 ──
+postprocess_module: null
+incremental_index: true
+attachments_dir: "_attachments"
+
+# ── Obsidian ──
+obsidian_breadcrumb: true
+obsidian_aliases: true

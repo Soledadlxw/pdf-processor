@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""Phase 2: 批量翻译英文笔记 → 中文（仅 qwen3.6，无模型切换）
+同时翻译章节标题、提炼短标签、重命名文件为中文"""
+
+import os
+import sys
+import re
+import yaml
+import time
+from ollama import Client
+from pathlib import Path
+
+VAULT_DIR = os.path.expanduser("~/note")
+MODEL = "qwen3.6:35b-mlx"
+
+STAGE2_PROMPT = open(os.path.join(os.path.dirname(__file__),
+                     "prompts/medical_stage2.txt")).read()
+
+
+def translate_title(ollama: Client, chapter_title: str, book_zh: str) -> tuple[str, str]:
+    """翻译章节标题 + 提炼 5-8 字短标签，返回 (title_zh, short_title)"""
+    prompt = f"""Translate this medical textbook chapter title into Chinese, then extract a 5-8 character short label.
+
+Chapter title: {chapter_title}
+Book: {book_zh}
+
+Rules:
+- title_zh: accurate Chinese translation of the full title (keep key terms)
+- short_title: 5-8 Chinese characters capturing the core topic, suitable for navigation links
+
+Output format (exactly):
+title_zh: <Chinese translation>
+short_title: <5-8 char label>"""
+
+    try:
+        resp = ollama.chat(model=MODEL, messages=[{"role": "user", "content": prompt}],
+                          options={"temperature": 0.1, "num_ctx": 2048}, keep_alive="0s")
+        text = resp["message"]["content"]
+        tz = re.search(r'title_zh:\s*(.+)', text)
+        st = re.search(r'short_title:\s*(.+)', text)
+        return (tz.group(1).strip() if tz else chapter_title,
+                st.group(1).strip()[:10] if st else chapter_title[:10])
+    except Exception:
+        return (chapter_title, chapter_title[:10])
+
+
+def slugify_cn(text: str) -> str:
+    """中文友好的文件名 slug"""
+    text = re.sub(r'[^\w一-鿿\s-]', '', text)
+    text = re.sub(r'[-\s]+', '-', text)
+    return text.strip('-')[:80]
+
+
+def translate_note(note_path: str, ollama: Client) -> bool:
+    """翻译单篇英文笔记为中文，翻译标题，重命名为中文文件名"""
+    with open(note_path) as f:
+        content = f.read()
+
+    # 解析 frontmatter
+    fm = {}
+    body = content
+    if content.startswith("---"):
+        end = content.index("---", 3)
+        fm = yaml.safe_load(content[3:end]) or {}
+        body = content[end+3:]
+
+    # 检查是否已翻译且有中文标题（跳过）
+    if fm.get("mode") in ("full", "bilingual") and fm.get("title_zh"):
+        return False
+    if "TL;DR" not in body and "##" not in body:
+        return False  # 空壳
+
+    book_zh = fm.get("book_zh", fm.get("book", ""))
+    book_title = fm.get("book", "")
+    cite_key = fm.get("cite_key", "")
+    chapter_title = fm.get("chapter_title", fm.get("title", ""))
+    year = fm.get("year", "")
+    edition = fm.get("edition", "")
+    dsm_version = fm.get("dsm_version", "")
+
+    # 翻译标题 + 提炼短标签
+    title_zh, short_title = translate_title(ollama, chapter_title, book_zh)
+
+    MAX_CHUNK_CHARS = 15000
+
+    if len(body) <= MAX_CHUNK_CHARS:
+        chunks = [body]
+    else:
+        sections = body.split("\n## ")
+        chunks = []
+        current = sections[0] if sections else ""
+        for sec in sections[1:]:
+            sec_full = "\n## " + sec
+            if len(current) + len(sec_full) < MAX_CHUNK_CHARS:
+                current += sec_full
+            else:
+                if current.strip():
+                    chunks.append(current.strip())
+                current = sec_full
+        if current.strip():
+            chunks.append(current.strip())
+
+    all_translations = []
+    for ci, chunk in enumerate(chunks):
+        chunk_title = f"{chapter_title} ({ci+1}/{len(chunks)})" if len(chunks) > 1 else chapter_title
+        prompt = STAGE2_PROMPT.format(
+            book_zh=book_zh, book_title=book_title,
+            year=year, edition=edition,
+            cite_key=cite_key, chapter_title=chunk_title,
+            dsm_version=dsm_version,
+            english_summary=chunk,
+        )
+        for attempt in range(3):
+            try:
+                resp = ollama.chat(model=MODEL, messages=[
+                    {"role": "user", "content": prompt}
+                ], options={"temperature": 0.2, "num_ctx": 16384}, keep_alive="0s")
+                all_translations.append(resp["message"]["content"])
+                break
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(30)
+                else:
+                    print(f"  ❌ chunk {ci+1} failed")
+                    return False
+
+    chinese = "\n\n".join(all_translations)
+
+    # 更新 frontmatter + 写回
+    fm["mode"] = "full"
+    fm["stage2_model"] = MODEL
+    fm["title_zh"] = title_zh
+    fm["short_title"] = short_title
+
+    # 用中文标题重命名文件
+    old_path = Path(note_path)
+    ch_num = fm.get("chapter", 0)
+    new_slug = slugify_cn(title_zh)
+    new_name = f"{ch_num:02d}-{new_slug}.md" if ch_num else f"{new_slug}.md"
+    new_path = old_path.parent / new_name
+
+    yaml_fm = yaml.dump(fm, allow_unicode=True, default_flow_style=False).strip()
+    with open(note_path, "w") as f:
+        f.write(f"---\n{yaml_fm}\n---\n\n{chinese}")
+
+    # 重命名主文件
+    if new_path != old_path:
+        try:
+            old_path.rename(new_path)
+        except OSError:
+            pass
+
+    # 同步重命名 _chunks/ 子文档（通过 child_of 匹配父文件）
+    chunks_dir = old_path.parent / "_chunks"
+    if chunks_dir.exists():
+        old_name = old_path.name
+        new_name = new_path.name
+        for cf in chunks_dir.glob("*.md"):
+            try:
+                with open(cf) as f:
+                    cc = f.read()
+                if not cc.startswith("---"):
+                    continue
+                cf_end = cc.index("---", 3)
+                cf_fm = yaml.safe_load(cc[3:cf_end]) or {}
+                if cf_fm.get("child_of") == old_name:
+                    # 更新 child_of 并重命名
+                    cf_fm["child_of"] = new_name
+                    cf_yaml = yaml.dump(cf_fm, allow_unicode=True, default_flow_style=False).strip()
+                    cf_body = cc[cf_end+3:]
+                    with open(cf, "w") as f:
+                        f.write(f"---\n{cf_yaml}\n---\n{cf_body}")
+                    # 重命名 chunk 文件：提取索引，用新 stem 重建
+                    idx_match = re.search(r'-(\d+)\.md$', cf.name)
+                    if idx_match:
+                        new_cf_name = f"{new_path.stem}-{idx_match.group(1)}.md"
+                        new_cf_path = chunks_dir / new_cf_name
+                        cf.rename(new_cf_path)
+
+                        # 翻译 chunk 内容
+                        cf_body_stripped = cf_body.strip()
+                        if cf_body_stripped and len(cf_body_stripped) > 200:
+                            cf_chapter_title = f"{title_zh} ({idx_match.group(1)})"
+                            cf_prompt = STAGE2_PROMPT.format(
+                                book_zh=book_zh, book_title=book_title,
+                                year=year, edition=edition,
+                                cite_key=cite_key, chapter_title=cf_chapter_title,
+                                dsm_version=dsm_version,
+                                english_summary=cf_body_stripped,
+                            )
+                            for cf_attempt in range(2):
+                                try:
+                                    cf_resp = ollama.chat(model=MODEL, messages=[
+                                        {"role": "user", "content": cf_prompt}
+                                    ], options={"temperature": 0.2, "num_ctx": 16384}, keep_alive="0s")
+                                    cf_chinese = cf_resp["message"]["content"]
+                                    cf_fm["mode"] = "full"
+                                    cf_yaml = yaml.dump(cf_fm, allow_unicode=True, default_flow_style=False).strip()
+                                    with open(new_cf_path, "w") as f:
+                                        f.write(f"---\n{cf_yaml}\n---\n\n{cf_chinese}")
+                                    break
+                                except Exception:
+                                    time.sleep(10)
+            except Exception:
+                pass
+
+    # 重生成面包屑导航（链接指向中文文件名）
+    all_notes = sorted(old_path.parent.glob("*.md"))
+    all_notes = [n for n in all_notes if n.name != "_index.md"]
+    prev_note, next_note = None, None
+    for j, np_path in enumerate(all_notes):
+        if np_path == new_path:
+            if j > 0:
+                prev_note = all_notes[j-1]
+            if j < len(all_notes) - 1:
+                next_note = all_notes[j+1]
+            break
+
+    nav = ""
+    if prev_note:
+        p_name = prev_note.stem
+        # 尝试读取 prev 的 short_title
+        try:
+            with open(prev_note) as pf:
+                pc = pf.read()
+            p_fm_end = pc.index("---", 3) if pc.startswith("---") else 0
+            p_fm = yaml.safe_load(pc[3:p_fm_end]) if p_fm_end else {}
+            p_label = p_fm.get("short_title", p_name)
+        except Exception:
+            p_label = p_name
+        nav += f"← [[{p_name}|{p_label}]]  "
+
+    if next_note:
+        n_name = next_note.stem
+        try:
+            with open(next_note) as nf:
+                nc = nf.read()
+            n_fm_end = nc.index("---", 3) if nc.startswith("---") else 0
+            n_fm = yaml.safe_load(nc[3:n_fm_end]) if n_fm_end else {}
+            n_label = n_fm.get("short_title", n_name)
+        except Exception:
+            n_label = n_name
+        nav += f"|  [[{n_name}|{n_label}]] →"
+
+    # 写回文件，在 # Title 后插入导航
+    if nav:
+        with open(new_path) as f:
+            final_content = f.read()
+        # 在第一个 # 标题行后插入导航
+        title_end = final_content.find("\n", final_content.find("# "))
+        if title_end > 0:
+            final_content = final_content[:title_end+1] + "\n" + nav + "\n" + final_content[title_end+1:]
+            with open(new_path, "w") as f:
+                f.write(final_content)
+
+    return True
+
+
+def main():
+    note_dir = sys.argv[1] if len(sys.argv) > 1 else None
+    if not note_dir:
+        print("Usage: python3 batch_translate.py <notes_directory>")
+        sys.exit(1)
+
+    notes = sorted(Path(note_dir).glob("*.md"))
+    notes = [n for n in notes if not n.name.startswith("_")]
+
+    ollama = Client(host="http://localhost:11434", timeout=300)
+    print(f"Translating {len(notes)} notes with {MODEL}...")
+    print(f"Source: {note_dir}")
+
+    done = 0
+    for i, np in enumerate(notes):
+        name = np.name[:60]
+        print(f"  [{i+1}/{len(notes)}] {name}...", end=" ", flush=True)
+        t0 = time.time()
+        ok = translate_note(str(np), ollama)
+        dt = time.time() - t0
+        if ok:
+            print(f"✅ {dt:.0f}s")
+            done += 1
+        else:
+            print(f"⏭️  ({dt:.0f}s)")
+
+    print(f"\nDone. {done}/{len(notes)} translated.")
+
+
+if __name__ == "__main__":
+    main()

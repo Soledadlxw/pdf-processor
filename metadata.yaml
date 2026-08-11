@@ -1,0 +1,234 @@
+AAP Developmental and Behavioral Pediatrics.pdf:
+  cite_key: 'AAP'
+  title: 'Developmental and Behavioral Pediatrics'
+  title_zh: '发育行为儿科学（AAP官方教材）'
+  authors:
+  - 'Robert G. Voigt'
+  - 'Michelle M. Macias'
+  - 'Scott M. Myers'
+  edition: 1
+  year: 2011
+  publisher: 'American Academy of Pediatrics'
+  isbn: '978-1-58110-274-8'
+  dsm_version: 'DSM-IV'
+  evidence_level: 'gold-standard'
+  book_type: 'textbook'
+  tags: [developmental-pediatrics, screening, early-intervention, ASD, ADHD, AAP]
+An Early Start for Your Child with Autism Using Everyday Activities to Help Kids Connect, Communicate, and Learn.pdf:
+  authors:
+  - Sally J. Rogers
+  - Geraldine Dawson
+  - Laurie A. Vismara
+  book_type: parent-guide
+  cite_key: ESDM
+  dsm_version: DSM-IV
+  edition: 1
+  evidence_level: expert-consensus
+  isbn: 978-1-60918-470-4
+  publisher: The Guilford Press
+  tags:
+  - ESDM
+  - early-intervention
+  - parent-guided
+  - toddler
+  - ASD
+  title: 'An Early Start for Your Child with Autism: Using Everyday Activities to
+    Help Kids Connect, Communicate, and Learn'
+  title_zh: 与自闭症孩子的早期介入
+  year: 2012
+Autism and Pervasive Developmental Disorders, Diagnosis, Development, and Brain Mechanisms.pdf:
+  authors:
+  - Fred R. Volkmar
+  - Rhea Paul
+  - Sally J. Rogers
+  - Kevin A. Pelphrey
+  book_type: reference-handbook
+  cite_key: HASD1
+  dsm_version: DSM-5-TR
+  edition: 5
+  evidence_level: evidence-based
+  isbn: 978-1-119-67825-0
+  publisher: Wiley
+  tags:
+  - diagnosis
+  - assessment
+  - neurobiology
+  - DSM-5-TR
+  - ASD
+  - reference
+  title: 'Handbook of Autism and Pervasive Developmental Disorders, Volume 1: Diagnosis,
+    Development, and Brain Mechanisms'
+  title_zh: 自闭症与广泛性发育障碍手册 卷一：诊断、发展与脑机制
+  year: 2025
+DSM_5_TR.pdf:
+  authors:
+  - Robert J. Hilt
+  - Abraham M. Nussbaum
+  book_type: clinical-guide
+  cite_key: DSM5TR
+  dsm_version: DSM-5-TR
+  edition: 1
+  evidence_level: gold-standard
+  isbn: 978-1-61537-464-7
+  publisher: American Psychiatric Association
+  tags:
+  - DSM-5-TR
+  - diagnosis
+  - child-adolescent
+  - pocket-guide
+  - clinical
+  title: DSM-5-TR Pocket Guide for Child and Adolescent Mental Health
+  title_zh: DSM-5-TR 儿童青少年心理健康口袋指南
+  year: 2022
+Early Start Denver Model for Young Children with Autism.pdf:
+  authors:
+  - Sally J. Rogers
+  - Geraldine Dawson
+  book_type: clinical-manual
+  chapters_override:
+  - end_page: 35
+    start_page: 23
+    title: 'Chapter 1: Current Understanding of Infant Learning and Autism'
+  - end_page: 56
+    start_page: 36
+    title: 'Chapter 2: An Overview of the Early Start Denver Model'
+  - end_page: 79
+    start_page: 57
+    title: 'Chapter 3: Using the Early Start Denver Model'
+  - end_page: 101
+    start_page: 80
+    title: 'Chapter 4: Developing Short-Term Learning Objectives'
+  - end_page: 122
+    start_page: 102
+    title: 'Chapter 5: Formulating Daily Teaching Targets and Tracking Progress'
+  - end_page: 157
+    start_page: 123
+    title: 'Chapter 6: Developing Plans and Frames for Teaching'
+  - end_page: 175
+    start_page: 158
+    title: 'Chapter 7: Developing Imitation and Play'
+  - end_page: 189
+    start_page: 176
+    title: 'Chapter 8: Developing Nonverbal Communication'
+  - end_page: 205
+    start_page: 190
+    title: 'Chapter 9: Developing Verbal Communication'
+  - end_page: 230
+    start_page: 206
+    title: 'Chapter 10: Using the Early Start Denver Model in Group Settings'
+  - end_page: 280
+    start_page: 231
+    title: 'Appendix A: ESDM Fidelity Coding Sheet'
+  - end_page: 324
+    start_page: 281
+    title: 'Appendix B: ESDM Curriculum Checklist'
+  cite_key: ESDM2
+  dsm_version: DSM-IV
+  edition: 1
+  evidence_level: RCT-validated
+  isbn: 978-1-60623-631-4
+  publisher: The Guilford Press
+  tags:
+  - ESDM
+  - early-intervention
+  - clinical-manual
+  - toddler
+  - ASD
+  - curriculum
+  title: 'Early Start Denver Model for Young Children with Autism: Promoting Language,
+    Learning, and Engagement'
+  title_zh: ESDM早期丹佛模式：促进幼儿语言、学习与参与
+  year: 2010
+Naturalistic Developmental Behavioral Interventions for Autism Spectrum Disorder.pdf:
+  authors:
+  - Yvonne E.M. Bruinsma
+  - Mendy B. Minjarez
+  - Laura Schreibman
+  - Aubyn C. Stahmer
+  book_type: clinical-guide
+  cite_key: NDBI
+  dsm_version: DSM-5
+  edition: 1
+  evidence_level: evidence-based
+  isbn: 978-1-68125-204-3
+  publisher: Paul H. Brookes Publishing
+  tags:
+  - NDBI
+  - ESDM
+  - PRT
+  - JASPER
+  - early-intervention
+  - ASD
+  title: Naturalistic Developmental Behavioral Interventions for Autism Spectrum Disorder
+  title_zh: 自闭症谱系障碍的自然情境发展行为干预
+  year: 2020
+The Reason I Jump The Inner Voice of a Thirteen-Year-Old Boy With Autism.pdf:
+  authors:
+  - Naoki Higashida
+  book_type: first-person-account
+  cite_key: JUMP
+  dsm_version: N/A
+  edition: 1
+  evidence_level: personal-account
+  isbn: 978-0-8129-9486-5
+  publisher: Random House
+  tags:
+  - autism
+  - personal-narrative
+  - nonverbal
+  - lived-experience
+  - Japan
+  title: 'The Reason I Jump: The Inner Voice of a Thirteen-Year-Old Boy with Autism'
+  title_zh: 我想飞进天空：一个13岁自闭症男孩的内心独白
+  year: 2007
+Nelson Textbook of Pediatrics.pdf:
+  cite_key: 'NELSON'
+  title: 'Nelson Textbook of Pediatrics'
+  title_zh: 'Nelson儿科学教材'
+  authors:
+  - 'Robert M. Kliegman'
+  - 'Joseph W. St. Geme III'
+  - 'Nathan J. Blum'
+  - 'Samir S. Shah'
+  - 'Robert C. Tasker'
+  - 'Karen M. Wilson'
+  edition: 21
+  year: 2020
+  publisher: 'Elsevier'
+  isbn: '978-0-323-52950-1'
+  dsm_version: 'DSM-5'
+  evidence_level: 'gold-standard'
+  book_type: 'textbook'
+  tags: [pediatrics, comprehensive, reference, developmental-pediatrics, AAP]
+Language_Disorders.pdf:
+  cite_key: 'LANG'
+  title: 'Language Disorders from Infancy through Adolescence: Listening, Speaking, Reading, Writing, and Communicating'
+  title_zh: '语言障碍：从婴儿期到青春期'
+  authors:
+  - 'Rhea Paul'
+  - 'Courtenay Norbury'
+  - 'Carolyn Gosse'
+  edition: 5
+  year: 2018
+  publisher: 'Elsevier'
+  isbn: '978-0-323-44234-3'
+  dsm_version: 'DSM-5'
+  evidence_level: 'gold-standard'
+  book_type: 'textbook'
+  tags: [language-disorders, speech-pathology, communication, ASD, child-development]
+ADOS-2 Manual.pdf:
+  cite_key: 'ADOS2'
+  title: 'Autism Diagnostic Observation Schedule, Second Edition (ADOS-2) Manual — Test Review'
+  title_zh: 'ADOS-2 自闭症诊断观察量表综述'
+  authors:
+  - 'Catherine Lord'
+  - 'Rhiannon J. Luyster'
+  - 'Katherine Gotham'
+  - 'Whitney Guthrie'
+  edition: 2
+  year: 2012
+  publisher: 'Western Psychological Services'
+  dsm_version: 'DSM-5'
+  evidence_level: 'gold-standard'
+  book_type: 'test-review'
+  tags: [ADOS, autism-diagnosis, assessment, toddler-module, ASD]

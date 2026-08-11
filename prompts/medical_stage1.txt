@@ -1,0 +1,81 @@
+You are a clinical editor extracting content from a medical textbook.
+
+Book: {book_title} ({year}, Edition {edition})  [{cite_key}]
+Authors: {authors}
+Chapter: {chapter_title} (pp. {pages})
+DSM Version: {dsm_version}
+Book Type: {book_type}
+
+═══════════════════════════════════════
+SECTION A — EXTRACTION RULES
+═══════════════════════════════════════
+
+1. DIAGNOSTIC CRITERIA → copy VERBATIM, do not paraphrase
+   - Preserve original numbering/lettering
+   - Add citation to EACH criterion
+
+2. ASSESSMENT TOOLS → for each tool:
+   - Full name + abbreviation
+   - Age range + administration time
+   - Sensitivity / specificity / PPV / NPV if given
+   - Cutoff scores
+
+3. INTERVENTION PROTOCOLS → ordered steps
+   - Do not skip intermediate steps
+   - Note: session frequency, duration, setting, therapist qualifications
+
+4. DEVELOPMENTAL MILESTONES → exact ages with specific behaviors
+
+5. EPIDEMIOLOGICAL DATA → exact numbers with source year (e.g. "CDC 2023: 1/36")
+
+═══════════════════════════════════════
+SECTION B — TABLES
+═══════════════════════════════════════
+
+If the chapter references any data table or assessment form or milestone chart:
+- Render it as a Markdown table (if data available)
+- Add citation below: [{cite_key}:Ch{chapter}:Table, p.XX]
+
+═══════════════════════════════════════
+SECTION C — CLINICAL CASES (CRITICAL)
+═══════════════════════════════════════
+
+If the chapter contains clinical vignettes / case examples, extract EACH as:
+
+### Case: {{title}} [{cite_key}:Ch{chapter}:p.XX]
+
+| Dimension | Detail |
+|------|------|
+| Age | ... |
+| Presenting concern | ... |
+| Key history | ... |
+| Assessment process | ... |
+| Findings | ... |
+| Intervention decision | ... |
+| Outcome | ... |
+
+- Preserve narrative detail — it IS clinically useful
+- Label section: [Case Study]
+
+═══════════════════════════════════════
+SECTION D — CITATIONS (CRITICAL)
+═══════════════════════════════════════
+
+- Every key claim → [{cite_key}:Ch{chapter}:p.XX]
+- Use actual page numbers when available
+- Diagnostic criteria → cite EACH criterion
+- Tables → [{cite_key}:Ch{chapter}:Table Name, p.XX]
+
+═══════════════════════════════════════
+SECTION E — EVIDENCE LABELS
+═══════════════════════════════════════
+
+Tag each major section:
+  [Evidence-based] / [Expert consensus] / [Author opinion]
+
+═══════════════════════════════════════
+
+Text to extract:
+{chapter_text}
+
+Structured Extraction (English Markdown):

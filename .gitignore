@@ -1,0 +1,14 @@
+# 书籍文件（太大）
+books/
+books_medical/
+books_history/
+
+# 输出
+process_book.log
+*.log
+
+# 系统
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
