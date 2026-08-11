@@ -1,5 +1,4 @@
-# 书籍文件（太大，排除内容保留目录结构）
-books/
+# 书籍文件（PDF/EPUB 不上传，保留目录结构）
 books_medical/*
 !books_medical/.gitkeep
 books_history/*
