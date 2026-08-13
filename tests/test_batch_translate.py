@@ -12,13 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from batch_translate import (  # noqa: E402
-    CHILD_CHUNK_SIZE,
-    read_frontmatter,
-    rebuild_children,
-    split_sections,
-    translate_note,
-)
+from batch_translate import CHILD_CHUNK_SIZE, translate_note  # noqa: E402
+from notes import read_frontmatter, write_children  # noqa: E402
 
 # 四个小节各约 1200 字符，共约 4800 —— 按 4000 的块大小切成 2 块，
 # 其中第一块由 3 个小节拼成，正好用来验证「拼接后仍是父文本的逐字切片」
@@ -84,50 +79,29 @@ def _body_of(path: Path) -> str:
     return text[text.index("---", 3) + 3:].strip()
 
 
-# ── 切分本身 ────────────────────────────────────────────────────────
-
-def test_split_sections_produces_verbatim_slices():
-    for chunk in split_sections(ZH_BODY, CHILD_CHUNK_SIZE):
-        assert chunk in ZH_BODY, "子块必须是父文本的逐字切片"
-
-
-def test_split_sections_respects_size_where_possible():
-    chunks = split_sections(ZH_BODY, CHILD_CHUNK_SIZE)
-    assert len(chunks) == 2, [len(c) for c in chunks]
-    assert any("第1节" in c and "第3节" in c for c in chunks), "小节应尽量拼满一块"
-    # 单个小节本身超限时只能自成一块，其余都要在预算内
-    assert all(len(c) <= CHILD_CHUNK_SIZE or "\n## " not in c for c in chunks)
-
-
-def test_split_sections_handles_text_without_headings():
-    assert split_sections("没有任何小节标题的正文", 4000) == ["没有任何小节标题的正文"]
-
-
-def test_split_sections_ignores_empty_input():
-    assert split_sections("", 4000) == []
-
-
 # ── 重建子文档 ──────────────────────────────────────────────────────
 
-def test_rebuild_children_removes_stale_english_chunks():
+def test_write_children_removes_stale_english_chunks():
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
         note, stale = _setup(tmp)
         new_parent = tmp / "01-发育概述.md"
         new_parent.write_text("---\nchapter: 1\n---\n\n" + ZH_BODY)
 
-        rebuild_children(ZH_BODY, {"chapter": 1}, note.name, new_parent)
+        write_children(ZH_BODY, {"chapter": 1}, new_parent, CHILD_CHUNK_SIZE,
+                       stale_names={note.name})
 
         assert not stale.exists(), "Phase 1 留下的英文子文档必须被清掉"
 
 
-def test_rebuild_children_names_files_after_the_parent():
+def test_write_children_names_files_after_the_parent():
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
         note, _ = _setup(tmp)
         new_parent = tmp / "01-发育概述.md"
 
-        written = rebuild_children(ZH_BODY, {"chapter": 1}, note.name, new_parent)
+        written = write_children(ZH_BODY, {"chapter": 1}, new_parent, CHILD_CHUNK_SIZE,
+                       stale_names={note.name})
 
         # 带章号前缀，重名章节的子文档不会互相覆盖
         assert [p.name for p in written] == ["01-发育概述-1.md", "01-发育概述-2.md"]
