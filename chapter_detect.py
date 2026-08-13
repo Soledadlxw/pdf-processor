@@ -30,8 +30,13 @@ def _is_valid_chapter_list(chapters: list[dict], total_pages: int) -> bool:
     return True
 
 
-def detect_chapters(doc: fitz.Document, text: str) -> list[dict]:
+def detect_chapters(doc: fitz.Document, text: str | None = None,
+                    text_factory=None) -> list[dict]:
     """
+    text / text_factory 二选一：只有正则策略用得到全书文本，而全书取文在大教材上
+    是分钟级的开销，所以调用方可以只传 text_factory（无参可调用对象），等真的降级
+    到正则策略时才求值。
+
     返回: [
       {
         "title": "Introduction",
@@ -50,10 +55,13 @@ def detect_chapters(doc: fitz.Document, text: str) -> list[dict]:
     if result and _is_valid_chapter_list(result, total_pages):
         return result
 
-    # 策略 2: 正则
-    result = _detect_by_regex(text)
-    if result and _is_valid_chapter_list(result, total_pages):
-        return result
+    # 策略 2: 正则（到这一步才需要全书文本）
+    if text is None and text_factory is not None:
+        text = text_factory()
+    if text:
+        result = _detect_by_regex(text)
+        if result and _is_valid_chapter_list(result, total_pages):
+            return result
 
     # 策略 3: 字号
     result = _detect_by_font_size(doc)
