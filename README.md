@@ -21,6 +21,7 @@ pip install pymupdf ollama pyyaml
 | `engine.py` | 医学 PDF 统一引擎 |
 | `batch_translate.py` | Phase 2 批量中译 + 标题中文化 |
 | `process_epub.py` | EPUB 历史书处理 |
+| `translate_tables.py` | 纯表格书籍逐页翻译（仅 qwen） |
 | `chapter_detect.py` | 章节检测（TOC 递归下钻，被 engine 调用） |
 | `cleaner.py` | PDF 清洗（被 engine 调用） |
 | `cross_check.py` | 跨书矛盾检测 |
@@ -104,7 +105,17 @@ python3 process_epub.py
 python3 -m postprocess.history
 ```
 
-### 3. engine.py 全部选项
+### 3. 纯表格书籍翻译（如评估量表手册附录）
+
+```bash
+python3 translate_tables.py "books_medical/Vineland 3 Manual.pdf"
+```
+
+- 只调 qwen，不加载 gemma4，内存占用低
+- 逐页翻译英文文本，保留所有数字、分数、统计值和表格结构
+- 适用于常模表、年龄当量表等纯数据附录
+
+### 4. engine.py 全部选项
 
 ```
 --book "关键词"       只处理匹配名称的书
