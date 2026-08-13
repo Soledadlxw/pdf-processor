@@ -30,7 +30,7 @@ keep_references: false
 trim_references: true
 
 # ── 表格 ──
-table_extraction: false
+table_extraction: true
 render_charts: false
 gen_image_desc: false
 image_dpi: 200

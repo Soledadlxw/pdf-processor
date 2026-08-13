@@ -232,3 +232,18 @@ ADOS-2 Manual.pdf:
   evidence_level: 'gold-standard'
   book_type: 'test-review'
   tags: [ADOS, autism-diagnosis, assessment, toddler-module, ASD]
+Vineland 3 Manual.pdf:
+  cite_key: 'VIN3'
+  title: 'Vineland Adaptive Behavior Scales, Third Edition (Vineland-3) Manual — Appendixes B–E'
+  title_zh: 'Vineland-3 适应行为量表手册'
+  authors:
+  - 'Sara S. Sparrow'
+  - 'Domenic V. Cicchetti'
+  - 'Celine A. Saulnier'
+  edition: 3
+  year: 2016
+  publisher: 'Pearson'
+  dsm_version: 'DSM-5'
+  evidence_level: 'gold-standard'
+  book_type: 'assessment-manual'
+  tags: [Vineland, adaptive-behavior, assessment, ASD, developmental-disabilities]
