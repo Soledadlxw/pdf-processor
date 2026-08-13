@@ -17,7 +17,7 @@ import fitz  # PyMuPDF
 import urllib.request
 import urllib.error
 import json as json_lib
-import importlib
+import importlib.util
 from ollama import Client
 import os
 import sys
@@ -440,33 +440,38 @@ def process_book(pdf_path: str, book_meta: dict, config: dict,
             config.get("attachments_dir", "_attachments"),
             safe_book_name,
         )
-        if config.get("render_charts") and image_parts:
-            os.makedirs(attach_dir, exist_ok=True)
+        # table_extraction 独立于 render_charts：只想要表格、不想要 PNG 是常见组合
+        # （评估量表手册就是这样），原来它嵌在 render_charts 里面，单开等于没开。
+        want_tables = bool(config.get("table_extraction"))
+        want_charts = bool(config.get("render_charts"))
+        if image_parts and (want_tables or want_charts):
+            if want_charts:
+                os.makedirs(attach_dir, exist_ok=True)
             for ip in image_parts:
+                page_no = ip["page"]
+                table_md = extract_table_markdown(pdf_path, page_no) if want_tables else None
+
+                if not table_md and not want_charts:
+                    continue  # 没抽到表格又不渲染图，这一页没什么可写的
+
+                image_refs += f"\n### 图表 p.{page_no}\n\n"
+                if table_md:
+                    image_refs += table_md
+                    print(f"    📊 p.{page_no}: table extracted")
+                    continue
+
                 png_path = os.path.join(attach_dir, ip["png_basename"])
                 if not os.path.exists(png_path):
-                    render_page_as_png(doc[ip["page"]-1], png_path,
+                    render_page_as_png(doc[page_no - 1], png_path,
                                        config.get("image_dpi", 200))
-                image_refs += f"\n### 图表 p.{ip['page']}\n\n"
-                if config.get("table_extraction"):
-                    table_md = extract_table_markdown(pdf_path, ip["page"])
-                    if table_md:
-                        image_refs += table_md
-                        print(f"    📊 p.{ip['page']}: table extracted")
-                    else:
-                        rel = os.path.join(
-                            os.path.basename(os.path.dirname(attach_dir)),
-                            safe_book_name, ip["png_basename"])
-                        image_refs += f"![[{rel}]]\n\n"
-                        if config.get("gen_image_desc"):
-                            desc = describe_image(png_path, ch["title"])
-                            image_refs += f"> {desc}\n\n"
-                        print(f"    🖼️  p.{ip['page']}: PNG")
-                else:
-                    rel = os.path.join(
-                        os.path.basename(os.path.dirname(attach_dir)),
-                        safe_book_name, ip["png_basename"])
-                    image_refs += f"![[{rel}]]\n\n"
+                rel = os.path.join(
+                    os.path.basename(os.path.dirname(attach_dir)),
+                    safe_book_name, ip["png_basename"])
+                image_refs += f"![[{rel}]]\n\n"
+                if config.get("gen_image_desc"):
+                    desc = describe_image(png_path, ch["title"])
+                    image_refs += f"> {desc}\n\n"
+                print(f"    🖼️  p.{page_no}: PNG")
 
         # ── frontmatter ──
         fm = {
@@ -720,6 +725,12 @@ if __name__ == "__main__":
     print(f"Stage 2:     {config.get('translate_model','N/A') if not fast_mode else 'SKIPPED'}")
     print(f"Mode:         {'DRY-RUN' if dry_run else 'fast' if fast_mode else 'bilingual' if bilingual else 'full'}")
     print(f"Output:       ~/note/{config.get('output_dir','Book Notes')}/")
+    if config.get("table_extraction"):
+        if importlib.util.find_spec("camelot") is None:
+            print("⚠️  table_extraction 已开启，但没装 camelot，表格会被静默跳过")
+            print("    pip install 'camelot-py[base]'")
+        else:
+            print("Tables:      camelot")
     print(f"{'='*60}")
 
     for pdf_path in pdfs:
