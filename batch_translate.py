@@ -10,8 +10,9 @@ import time
 from ollama import Client
 from pathlib import Path
 
-VAULT_DIR = os.path.expanduser("~/note")
 MODEL = "qwen3.6:35b-mlx"
+# 与 configs/medical.yaml 的 child_chunk_size 保持一致
+CHILD_CHUNK_SIZE = 4000
 
 STAGE2_PROMPT = open(os.path.join(os.path.dirname(__file__),
                      "prompts/medical_stage2.txt")).read()
@@ -49,6 +50,71 @@ def slugify_cn(text: str) -> str:
     text = re.sub(r'[^\w一-鿿\s-]', '', text)
     text = re.sub(r'[-\s]+', '-', text)
     return text.strip('-')[:80]
+
+
+def read_frontmatter(path: Path) -> dict:
+    """读 Markdown 的 YAML frontmatter，读不出来就当空的。"""
+    try:
+        content = path.read_text()
+        if not content.startswith("---"):
+            return {}
+        return yaml.safe_load(content[3:content.index("---", 3)]) or {}
+    except (OSError, ValueError, yaml.YAMLError):
+        return {}
+
+
+def split_sections(text: str, chunk_size: int) -> list[str]:
+    """按 ## 小节聚合成不超过 chunk_size 的块。
+
+    每块都是原文的逐字切片：re.split 消耗掉的正好是一个 "\\n"，所以用 "\\n"
+    拼回去就能还原原文。
+    """
+    sections = re.split(r"\n(?=## )", text)
+    chunks: list[str] = []
+    current: list[str] = []
+    for sec in sections:
+        if current and len("\n".join(current + [sec])) > chunk_size:
+            chunks.append("\n".join(current).strip())
+            current = [sec]
+        else:
+            current.append(sec)
+    if current:
+        chunks.append("\n".join(current).strip())
+    return [c for c in chunks if c]
+
+
+def rebuild_children(parent_text: str, parent_fm: dict, old_parent_name: str,
+                     parent_path: Path,
+                     chunk_size: int = CHILD_CHUNK_SIZE) -> list[Path]:
+    """用翻译好的父笔记重建子文档。
+
+    子文档必须是父笔记的逐字切片——「子文档命中、父文档供上下文」这套检索方式
+    的前提就是这个。原来的做法是把 Phase 1 留下的英文子文档再各自送一次 LLM，
+    于是同一份内容被翻译两遍：token 量差不多翻倍，而且独立翻出来的措辞和父笔记
+    对不上，引用会漂移。
+    """
+    chunks_dir = parent_path.parent / "_chunks"
+    if not parent_text.strip():
+        return []
+    chunks_dir.mkdir(exist_ok=True)
+
+    # 先清掉这个父笔记的旧子文档（英文内容，文件名也还是旧的）
+    stale = {old_parent_name, parent_path.name}
+    for cf in chunks_dir.glob("*.md"):
+        if read_frontmatter(cf).get("child_of") in stale:
+            cf.unlink()
+
+    written = []
+    for i, body in enumerate(split_sections(parent_text, chunk_size), start=1):
+        fm = dict(parent_fm)
+        fm["child_of"] = parent_path.name
+        fm["parent"] = parent_path.name
+        fm["child_index"] = i
+        path = chunks_dir / f"{parent_path.stem}-{i}.md"
+        yaml_fm = yaml.dump(fm, allow_unicode=True, default_flow_style=False).strip()
+        path.write_text(f"---\n{yaml_fm}\n---\n\n{body}")
+        written.append(path)
+    return written
 
 
 def translate_note(note_path: str, ollama: Client) -> bool:
@@ -144,72 +210,23 @@ def translate_note(note_path: str, ollama: Client) -> bool:
         f.write(f"---\n{yaml_fm}\n---\n\n{chinese}")
 
     # 重命名主文件
+    final_path = old_path
     if new_path != old_path:
         try:
             old_path.rename(new_path)
-        except OSError:
-            pass
+            final_path = new_path
+        except OSError as e:
+            print(f"⚠️  重命名失败（{e}），保留 {old_path.name}", end=" ")
 
-    # 同步重命名 _chunks/ 子文档（通过 child_of 匹配父文件）
-    chunks_dir = old_path.parent / "_chunks"
-    if chunks_dir.exists():
-        old_name = old_path.name
-        new_name = new_path.name
-        for cf in chunks_dir.glob("*.md"):
-            try:
-                with open(cf) as f:
-                    cc = f.read()
-                if not cc.startswith("---"):
-                    continue
-                cf_end = cc.index("---", 3)
-                cf_fm = yaml.safe_load(cc[3:cf_end]) or {}
-                if cf_fm.get("child_of") == old_name:
-                    # 更新 child_of 并重命名
-                    cf_fm["child_of"] = new_name
-                    cf_yaml = yaml.dump(cf_fm, allow_unicode=True, default_flow_style=False).strip()
-                    cf_body = cc[cf_end+3:]
-                    with open(cf, "w") as f:
-                        f.write(f"---\n{cf_yaml}\n---\n{cf_body}")
-                    # 重命名 chunk 文件：提取索引，用新 stem 重建
-                    idx_match = re.search(r'-(\d+)\.md$', cf.name)
-                    if idx_match:
-                        new_cf_name = f"{new_path.stem}-{idx_match.group(1)}.md"
-                        new_cf_path = chunks_dir / new_cf_name
-                        cf.rename(new_cf_path)
-
-                        # 翻译 chunk 内容
-                        cf_body_stripped = cf_body.strip()
-                        if cf_body_stripped and len(cf_body_stripped) > 200:
-                            cf_chapter_title = f"{title_zh} ({idx_match.group(1)})"
-                            cf_prompt = STAGE2_PROMPT.format(
-                                book_zh=book_zh, book_title=book_title,
-                                year=year, edition=edition,
-                                cite_key=cite_key, chapter_title=cf_chapter_title,
-                                dsm_version=dsm_version,
-                                english_summary=cf_body_stripped,
-                            )
-                            for cf_attempt in range(2):
-                                try:
-                                    cf_resp = ollama.chat(model=MODEL, messages=[
-                                        {"role": "user", "content": cf_prompt}
-                                    ], options={"temperature": 0.2, "num_ctx": 16384}, keep_alive="0s")
-                                    cf_chinese = cf_resp["message"]["content"]
-                                    cf_fm["mode"] = "full"
-                                    cf_yaml = yaml.dump(cf_fm, allow_unicode=True, default_flow_style=False).strip()
-                                    with open(new_cf_path, "w") as f:
-                                        f.write(f"---\n{cf_yaml}\n---\n\n{cf_chinese}")
-                                    break
-                                except Exception:
-                                    time.sleep(10)
-            except Exception:
-                pass
+    # 重建 _chunks/ 子文档：直接切中文父文本，不再逐个送 LLM
+    rebuild_children(chinese, fm, old_path.name, final_path)
 
     # 重生成面包屑导航（链接指向中文文件名）
     all_notes = sorted(old_path.parent.glob("*.md"))
-    all_notes = [n for n in all_notes if n.name != "_index.md"]
+    all_notes = [n for n in all_notes if not n.name.startswith("_")]
     prev_note, next_note = None, None
     for j, np_path in enumerate(all_notes):
-        if np_path == new_path:
+        if np_path == final_path:
             if j > 0:
                 prev_note = all_notes[j-1]
             if j < len(all_notes) - 1:
@@ -218,40 +235,20 @@ def translate_note(note_path: str, ollama: Client) -> bool:
 
     nav = ""
     if prev_note:
-        p_name = prev_note.stem
-        # 尝试读取 prev 的 short_title
-        try:
-            with open(prev_note) as pf:
-                pc = pf.read()
-            p_fm_end = pc.index("---", 3) if pc.startswith("---") else 0
-            p_fm = yaml.safe_load(pc[3:p_fm_end]) if p_fm_end else {}
-            p_label = p_fm.get("short_title", p_name)
-        except Exception:
-            p_label = p_name
-        nav += f"← [[{p_name}|{p_label}]]  "
-
+        p_label = read_frontmatter(prev_note).get("short_title", prev_note.stem)
+        nav += f"← [[{prev_note.stem}|{p_label}]]  "
     if next_note:
-        n_name = next_note.stem
-        try:
-            with open(next_note) as nf:
-                nc = nf.read()
-            n_fm_end = nc.index("---", 3) if nc.startswith("---") else 0
-            n_fm = yaml.safe_load(nc[3:n_fm_end]) if n_fm_end else {}
-            n_label = n_fm.get("short_title", n_name)
-        except Exception:
-            n_label = n_name
-        nav += f"|  [[{n_name}|{n_label}]] →"
+        n_label = read_frontmatter(next_note).get("short_title", next_note.stem)
+        nav += f"|  [[{next_note.stem}|{n_label}]] →"
 
     # 写回文件，在 # Title 后插入导航
     if nav:
-        with open(new_path) as f:
-            final_content = f.read()
+        final_content = final_path.read_text()
         # 在第一个 # 标题行后插入导航
         title_end = final_content.find("\n", final_content.find("# "))
         if title_end > 0:
             final_content = final_content[:title_end+1] + "\n" + nav + "\n" + final_content[title_end+1:]
-            with open(new_path, "w") as f:
-                f.write(final_content)
+            final_path.write_text(final_content)
 
     return True
 
