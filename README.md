@@ -85,6 +85,7 @@ python3 batch_translate.py "~/note/Book Notes/书名/"
 - 自动重命名文件为中文
 - 自动重生成面包屑导航
 - 大章（>15K 字符）自动分块翻译
+- `_chunks/` 子文档由翻译后的中文正文直接切分生成，不再逐个送 LLM
 
 #### 1.4 后处理
 
@@ -187,7 +188,7 @@ python3 translate_tables.py "books_medical/Vineland 3 Manual.pdf"
 3. **Ollama 偶发断连**，引擎内置 3 次重试，间隔 30 秒
 4. **章节检测依赖 PDF 内嵌 TOC**，扫描版 PDF 会降级到页数等分
 5. **Obsidian Mermaid 兼容**：已自动处理 `<br/>`、`|`、`%%` 注释等不兼容语法
-6. **`_chunks/`** 目录为 RAG 子文档，翻译时自动跟随主文档更新
+6. **`_chunks/`** 目录为 RAG 子文档，是父笔记正文的逐字切片（子文档命中、父文档供上下文），Phase 2 翻译后按中文正文重新生成
 7. **batch_translate.py 大章处理**：>15K 字符自动按 `##` 切分，单块超时 600s
 
 ## 已修复的坑
