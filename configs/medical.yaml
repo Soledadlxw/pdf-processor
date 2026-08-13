@@ -22,7 +22,6 @@ header_y_ratio: 0.08
 footer_y_ratio: 0.08
 max_chars_per_chapter: 25000
 child_chunk_size: 4000
-child_chunk_overlap: 500
 max_retries: 3
 
 # ── 参考文献 ──

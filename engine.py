@@ -32,6 +32,7 @@ from cleaner import (clean_book_pages, extract_metadata,
                       describe_image, split_chapter_pages,
                       extract_table_markdown)
 from chapter_detect import detect_chapters
+from notes import write_children
 
 CURRENT_YEAR = 2026
 DSM5_TR_YEAR = 2022
@@ -87,42 +88,6 @@ def chunk_text_by_paragraphs(text: str, max_chars: int) -> list[str]:
     if current.strip():
         chunks.append(current.strip())
     return chunks
-
-
-def split_into_children(parent_text: str, parent_frontmatter: dict,
-                        parent_filename: str, output_dir: str,
-                        child_chunk_size: int, child_chunk_overlap: int) -> list[str]:
-    chunks_dir = os.path.join(output_dir, "_chunks")
-    os.makedirs(chunks_dir, exist_ok=True)
-
-    sections = re_mod.split(r"\n(?=## )", parent_text)
-    if len(sections) <= 2:
-        sections = [parent_text]
-
-    child_texts, current = [], ""
-    for sec in sections:
-        if len(current) + len(sec) < child_chunk_size:
-            current += sec + "\n\n"
-        else:
-            if current.strip():
-                child_texts.append(current.strip())
-            current = sec + "\n\n"
-    if current.strip():
-        child_texts.append(current.strip())
-
-    child_paths = []
-    for i, ct in enumerate(child_texts):
-        fm = dict(parent_frontmatter)
-        fm["child_of"] = parent_filename
-        fm["parent"] = parent_filename
-        slug = slugify(parent_frontmatter.get("title", f"section-{i}"))
-        name = f"{slugify(parent_frontmatter.get('book',''))}-{slug}-{i+1}.md"
-        child_path = os.path.join(chunks_dir, name)
-        yaml_fm = yaml.dump(fm, allow_unicode=True, default_flow_style=False).strip()
-        with open(child_path, "w") as f:
-            f.write(f"---\n{yaml_fm}\n---\n\n{ct}")
-        child_paths.append(child_path)
-    return child_paths
 
 
 def assess_timeliness(year, dsm_version, chapter_title, rules, tags, output_dir, cite_key=""):
@@ -529,10 +494,9 @@ def process_book(pdf_path: str, book_meta: dict, config: dict,
         print(f"    ✅ → {note_filename}")
 
         # ── 父子文档 ──
-        child_paths = split_into_children(
-            final_note, fm, note_filename, output_dir,
+        child_paths = write_children(
+            final_note, fm, Path(note_path),
             config.get("child_chunk_size", 4000),
-            config.get("child_chunk_overlap", 500),
         )
         if child_paths:
             print(f"    📦 {len(child_paths)} child chunks")

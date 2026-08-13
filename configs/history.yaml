@@ -18,7 +18,6 @@ stage1_prompt: "../prompts/history_stage1.txt"
 # ── 清洗 ──
 max_chars_per_chapter: 30000
 child_chunk_size: 5000
-child_chunk_overlap: 500
 max_retries: 3
 
 # ── 结构化数据 ──

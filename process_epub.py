@@ -24,6 +24,8 @@ from collections import OrderedDict
 
 from ollama import Client
 
+from notes import write_children
+
 # ===== 配置 =====
 BOOK_DIR = "./books_history"
 VAULT_DIR = os.path.expanduser("~/note")
@@ -34,7 +36,6 @@ MODEL = "qwen3.6:35b-mlx"
 
 MAX_CHARS_PER_CHAPTER = 30000
 CHILD_CHUNK_SIZE = 5000
-CHILD_CHUNK_OVERLAP = 500
 MAX_RETRIES = 3
 
 OLLAMA_API = "http://localhost:11434"
@@ -214,47 +215,6 @@ def chunk_text_by_paragraphs(text: str, max_chars: int) -> list[str]:
     return chunks
 
 
-def split_into_children(parent_text: str, parent_frontmatter: dict,
-                        parent_filename: str, output_dir: str) -> list[str]:
-    chunks_dir = os.path.join(output_dir, "_chunks")
-    os.makedirs(chunks_dir, exist_ok=True)
-
-    sections = re.split(r"\n(?=## )", parent_text)
-    if len(sections) <= 2:
-        sections = [parent_text]
-
-    child_texts = []
-    current = ""
-    for sec in sections:
-        if len(current) + len(sec) < CHILD_CHUNK_SIZE:
-            current += sec + "\n\n"
-        else:
-            if current.strip():
-                child_texts.append(current.strip())
-            current = sec + "\n\n"
-    if current.strip():
-        child_texts.append(current.strip())
-
-    child_paths = []
-    for i, child_text in enumerate(child_texts):
-        child_fm = dict(parent_frontmatter)
-        child_fm["child_of"] = parent_filename
-        child_fm["child_index"] = i
-
-        child_name = f"{os.path.splitext(parent_filename)[0]}-chunk{i:02d}.md"
-        child_path = os.path.join(chunks_dir, child_name)
-
-        with open(child_path, "w") as f:
-            f.write("---\n")
-            yaml.dump(child_fm, f, allow_unicode=True, default_flow_style=False)
-            f.write("---\n\n")
-            f.write(child_text)
-
-        child_paths.append(child_name)
-
-    return child_paths
-
-
 def call_ollama(prompt: str, model: str = MODEL) -> str:
     """Call Ollama with retries."""
     for attempt in range(MAX_RETRIES):
@@ -404,7 +364,7 @@ def process_epub_book(epub_path: str, book_meta: dict, dry_run: bool = False):
             f.write(note_body)
 
         # Split into child chunks for RAG
-        child_paths = split_into_children(note_body, fm, filename, output_dir)
+        child_paths = write_children(note_body, fm, Path(filepath), CHILD_CHUNK_SIZE)
 
         print(f"    ✅ → {filename}")
         if child_paths:

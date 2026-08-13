@@ -10,6 +10,8 @@ import time
 from ollama import Client
 from pathlib import Path
 
+from notes import read_frontmatter, write_children
+
 MODEL = "qwen3.6:35b-mlx"
 # 与 configs/medical.yaml 的 child_chunk_size 保持一致
 CHILD_CHUNK_SIZE = 4000
@@ -52,69 +54,6 @@ def slugify_cn(text: str) -> str:
     return text.strip('-')[:80]
 
 
-def read_frontmatter(path: Path) -> dict:
-    """读 Markdown 的 YAML frontmatter，读不出来就当空的。"""
-    try:
-        content = path.read_text()
-        if not content.startswith("---"):
-            return {}
-        return yaml.safe_load(content[3:content.index("---", 3)]) or {}
-    except (OSError, ValueError, yaml.YAMLError):
-        return {}
-
-
-def split_sections(text: str, chunk_size: int) -> list[str]:
-    """按 ## 小节聚合成不超过 chunk_size 的块。
-
-    每块都是原文的逐字切片：re.split 消耗掉的正好是一个 "\\n"，所以用 "\\n"
-    拼回去就能还原原文。
-    """
-    sections = re.split(r"\n(?=## )", text)
-    chunks: list[str] = []
-    current: list[str] = []
-    for sec in sections:
-        if current and len("\n".join(current + [sec])) > chunk_size:
-            chunks.append("\n".join(current).strip())
-            current = [sec]
-        else:
-            current.append(sec)
-    if current:
-        chunks.append("\n".join(current).strip())
-    return [c for c in chunks if c]
-
-
-def rebuild_children(parent_text: str, parent_fm: dict, old_parent_name: str,
-                     parent_path: Path,
-                     chunk_size: int = CHILD_CHUNK_SIZE) -> list[Path]:
-    """用翻译好的父笔记重建子文档。
-
-    子文档必须是父笔记的逐字切片——「子文档命中、父文档供上下文」这套检索方式
-    的前提就是这个。原来的做法是把 Phase 1 留下的英文子文档再各自送一次 LLM，
-    于是同一份内容被翻译两遍：token 量差不多翻倍，而且独立翻出来的措辞和父笔记
-    对不上，引用会漂移。
-    """
-    chunks_dir = parent_path.parent / "_chunks"
-    if not parent_text.strip():
-        return []
-    chunks_dir.mkdir(exist_ok=True)
-
-    # 先清掉这个父笔记的旧子文档（英文内容，文件名也还是旧的）
-    stale = {old_parent_name, parent_path.name}
-    for cf in chunks_dir.glob("*.md"):
-        if read_frontmatter(cf).get("child_of") in stale:
-            cf.unlink()
-
-    written = []
-    for i, body in enumerate(split_sections(parent_text, chunk_size), start=1):
-        fm = dict(parent_fm)
-        fm["child_of"] = parent_path.name
-        fm["parent"] = parent_path.name
-        fm["child_index"] = i
-        path = chunks_dir / f"{parent_path.stem}-{i}.md"
-        yaml_fm = yaml.dump(fm, allow_unicode=True, default_flow_style=False).strip()
-        path.write_text(f"---\n{yaml_fm}\n---\n\n{body}")
-        written.append(path)
-    return written
 
 
 def translate_note(note_path: str, ollama: Client) -> bool:
@@ -219,7 +158,8 @@ def translate_note(note_path: str, ollama: Client) -> bool:
             print(f"⚠️  重命名失败（{e}），保留 {old_path.name}", end=" ")
 
     # 重建 _chunks/ 子文档：直接切中文父文本，不再逐个送 LLM
-    rebuild_children(chinese, fm, old_path.name, final_path)
+    write_children(chinese, fm, final_path, CHILD_CHUNK_SIZE,
+                   stale_names={old_path.name})
 
     # 重生成面包屑导航（链接指向中文文件名）
     all_notes = sorted(old_path.parent.glob("*.md"))
