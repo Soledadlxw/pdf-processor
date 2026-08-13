@@ -12,6 +12,9 @@
 ollama pull gemma4:31b-mlx
 ollama pull qwen3.6:35b-mlx
 pip install pymupdf ollama pyyaml
+
+# 仅在 configs/*.yaml 里开了 table_extraction 时需要
+pip install 'camelot-py[base]'
 ```
 
 ## 脚本一览
@@ -114,6 +117,9 @@ python3 translate_tables.py "books_medical/Vineland 3 Manual.pdf"
 - 只调 qwen，不加载 gemma4，内存占用低
 - 逐页翻译英文文本，保留所有数字、分数、统计值和表格结构
 - 适用于常模表、年龄当量表等纯数据附录
+- 按字符预算分批（≤12000 字符或 ≤10 页），不会因为固定页数把后几页挤出 prompt
+- 模型漏页时自动单页重翻；仍失败则写入英文原文并标 `status: untranslated`
+- 结束时校验「非空页数 = 落盘文件数」，有缺页会报错退出
 
 ### 4. engine.py 全部选项
 
