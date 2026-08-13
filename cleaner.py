@@ -49,76 +49,101 @@ def extract_tables_from_page(page: fitz.Page, cite_key: str,
     return results
 
 
+def clean_page_blocks(page: fitz.Page,
+                      header_ratio: float = 0.08,
+                      footer_ratio: float = 0.08) -> list[str]:
+    """按阅读顺序提取一页的正文块，去掉页眉页脚带内的内容和纯页码。"""
+    height = page.rect.height
+    blocks = page.get_text("blocks")
+    # 按阅读顺序排序：先垂直、再水平（处理双栏）
+    blocks.sort(key=lambda b: (round(b[1] / 20) * 20, b[0]))
+
+    clean_blocks = []
+    for b in blocks:
+        # type 0 = 文本, type 1 = 图片（跳过）
+        if b[6] != 0:
+            continue
+
+        y = b[1]
+        # 页眉（顶部 header_ratio）／页脚（底部 footer_ratio）
+        if y < height * header_ratio or y > height * (1 - footer_ratio):
+            continue
+
+        text = b[4].strip()
+        # 空行、纯页码
+        if not text or text.isdigit():
+            continue
+
+        clean_blocks.append(text)
+
+    return clean_blocks
+
+
+def drop_running_headers(pages_lines: list[list[str]],
+                         min_pages: int = 4,
+                         min_fraction: float = 0.5,
+                         max_len: int = 100) -> list[list[str]]:
+    """去掉漏出页眉页脚带、在大部分页面重复出现的短行。
+
+    只有「短」且「至少出现在一半页面上」的行才算跑版页眉。教材里 Treatment、
+    Etiology 这类小标题会在少数页面重复出现，不能跟着一起删。
+    """
+    n_pages = len(pages_lines)
+    if n_pages < min_pages:
+        return pages_lines
+
+    threshold = max(min_pages, int(n_pages * min_fraction))
+    counts: dict[str, int] = {}
+    for lines in pages_lines:
+        # 每页同一行只计一次，避免单页内的重复抬高计数
+        for norm in {l.strip().lower() for l in lines if len(l) <= max_len}:
+            counts[norm] = counts.get(norm, 0) + 1
+
+    repeated = {t for t, c in counts.items() if c >= threshold}
+    if not repeated:
+        return pages_lines
+
+    return [
+        [l for l in lines if len(l) > max_len or l.strip().lower() not in repeated]
+        for lines in pages_lines
+    ]
+
+
 def clean_book_pages(doc: fitz.Document, cite_key: str = "",
                      chapter_num: int = 0,
                      header_ratio: float = 0.08,
-                     footer_ratio: float = 0.08) -> tuple[str, list[dict]]:
+                     footer_ratio: float = 0.08,
+                     extract_tables: bool = False) -> tuple[str, list[dict]]:
     """
     从 PyMuPDF Document 提取并清洗正文。
 
+    extract_tables 默认关闭：find_tables() 比取文字慢约 60 倍，只有真正要用表格的
+    调用方才应该打开它。
+
     返回:
-        text: 清洗后的正文（含表格 Markdown 插入）
+        text: 清洗后的正文（extract_tables 打开时在末尾附上表格 Markdown）
         all_tables: 抽出的表格列表 [{markdown, page, bbox}, ...]
     """
-    seen_lines: dict[str, int] = {}
     all_tables: list[dict] = []
-    page_texts: list[str] = []
+    pages_lines: list[list[str]] = []
 
     for page_num in range(len(doc)):
         page = doc[page_num]
-        height = page.rect.height
 
-        # ── 表格提取 ──
-        if cite_key:
-            tables = extract_tables_from_page(page, cite_key, chapter_num)
-            all_tables.extend(tables)
+        if extract_tables:
+            all_tables.extend(extract_tables_from_page(page, cite_key, chapter_num))
 
-        # ── 文本块提取 ──
-        blocks = page.get_text("blocks")
-        # 按阅读顺序排序：先垂直、再水平（处理双栏）
-        blocks.sort(key=lambda b: (round(b[1] / 20) * 20, b[0]))
+        pages_lines.append(clean_page_blocks(page, header_ratio, footer_ratio))
 
-        clean_blocks = []
-        for b in blocks:
-            # type 0 = 文本, type 1 = 图片（跳过）
-            if b[6] != 0:
-                continue
-
-            y = b[1]
-            text = b[4].strip()
-
-            # 页眉（顶部 8%）
-            if y < height * header_ratio:
-                continue
-            # 页脚（底部 8%）
-            if y > height * (1 - footer_ratio):
-                continue
-            # 纯页码
-            if text.isdigit():
-                continue
-            # 空行
-            if not text:
-                continue
-
-            # 重复行检测（常见章节标题或作者名作为页眉重复）
-            normalized = text.lower().strip()
-            seen_lines[normalized] = seen_lines.get(normalized, 0) + 1
-            if seen_lines[normalized] > 3:
-                continue
-
-            clean_blocks.append(text)
-
-        if clean_blocks:
-            page_texts.append("\n".join(clean_blocks))
-
-    text = "\n\n".join(page_texts)
+    pages_lines = drop_running_headers(pages_lines)
+    text = "\n\n".join("\n".join(lines) for lines in pages_lines if lines)
 
     # ── 参考文献截断 ──
     text = trim_references(text)
 
     # ── 表格插入 ──
     # 在正文末尾附加所有表格（理想情况应按位置插入，简化处理）
-    if all_tables and cite_key:
+    if all_tables:
         text += "\n\n## 本章表格\n\n"
         for t in all_tables:
             text += t["markdown"] + "\n\n"
@@ -312,31 +337,41 @@ def extract_table_markdown(pdf_path: str, page_num: int) -> str | None:
 
 
 def split_chapter_pages(doc: fitz.Document, start_page: int,
-                        end_page: int) -> tuple[str, list[dict]]:
+                        end_page: int,
+                        header_ratio: float = 0.08,
+                        footer_ratio: float = 0.08,
+                        trim_refs: bool = True) -> tuple[str, list[dict]]:
     """
-    将章节页面分流为文字和图表。
+    将章节页面分流为文字和图表，文字部分做与 clean_book_pages 相同的清洗。
+
+    这里的返回值就是最终送进 LLM 的正文，所以页眉页脚裁剪、纯页码剔除、跑版页眉
+    去重和参考文献截断都必须在这里生效。
 
     返回:
-        text_parts: 合并的文字页文本
-        image_parts: [{page, png_basename, description}, ...]
+        text: 清洗后的章节正文，段落之间以空行分隔（供按段落分块）
+        image_parts: [{page, png_basename}, ...]
     """
-    text_parts = []
+    pages_lines: list[list[str]] = []
     image_parts = []
 
     for pg in range(start_page, end_page + 1):
         page = doc[pg]
-        page_type = classify_page(page)
 
-        if page_type == "text":
-            blocks = page.get_text("blocks")
-            blocks.sort(key=lambda b: (round(b[1] / 20) * 20, b[0]))
-            for b in blocks:
-                if b[6] == 0:
-                    text_parts.append(b[4].strip())
+        if classify_page(page) == "text":
+            pages_lines.append(clean_page_blocks(page, header_ratio, footer_ratio))
         else:
             image_parts.append({
                 "page": pg + 1,
                 "png_basename": f"p{pg+1}.png",
             })
 
-    return "\n".join(text_parts), image_parts
+    pages_lines = drop_running_headers(pages_lines)
+
+    # 用空行分隔段落：engine 的 chunk_text_by_paragraphs 按 "\n\n" 切块，
+    # 用 "\n" 拼会让整章变成一个段落，max_chars_per_chapter 就形同虚设。
+    text = "\n\n".join(line for lines in pages_lines for line in lines)
+
+    if trim_refs:
+        text = trim_references(text)
+
+    return text, image_parts

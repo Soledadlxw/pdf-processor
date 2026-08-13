@@ -65,9 +65,19 @@ def slugify(text: str) -> str:
 
 
 def chunk_text_by_paragraphs(text: str, max_chars: int) -> list[str]:
+    if max_chars <= 0:
+        return [text] if text.strip() else []
+
     paragraphs = text.split("\n\n")
     chunks, current = [], ""
     for p in paragraphs:
+        # 单个段落就超限时先硬切；否则它会独占一个块，max_chars 拦不住它
+        while len(p) >= max_chars:
+            if current.strip():
+                chunks.append(current.strip())
+                current = ""
+            chunks.append(p[:max_chars].strip())
+            p = p[max_chars:]
         if len(current) + len(p) < max_chars:
             current += p + "\n\n"
         else:
@@ -182,12 +192,10 @@ def process_book(pdf_path: str, book_meta: dict, config: dict,
     print(f"📖 {book_title}  [{cite_key}]")
     print(f"   {len(doc)} pages")
 
-    # ── 清洗 ──
-    cleaned_text, all_tables = clean_book_pages(
-        doc, cite_key=cite_key, chapter_num=0,
-        header_ratio=config.get("header_y_ratio", 0.08),
-        footer_ratio=config.get("footer_y_ratio", 0.08),
-    )
+    # ── 清洗参数 ──
+    header_ratio = config.get("header_y_ratio", 0.08)
+    footer_ratio = config.get("footer_y_ratio", 0.08)
+    trim_refs = config.get("trim_references", True)
 
     # ── 章节检测 ──
     chapters_override = book_meta.get("chapters_override")
@@ -199,7 +207,9 @@ def process_book(pdf_path: str, book_meta: dict, config: dict,
             c["method"] = "manual"
         print(f"  Using {len(chapters)} manual chapters from metadata")
     else:
-        chapters = detect_chapters(doc, cleaned_text)
+        # 全书取文只有正则降级策略用得上，TOC 能用时不必付这笔开销
+        chapters = detect_chapters(doc, text_factory=lambda: clean_book_pages(
+            doc, header_ratio=header_ratio, footer_ratio=footer_ratio)[0])
         print(f"  Detected {len(chapters)} chapters (method: {chapters[0].get('method','?') if chapters else 'N/A'})")
 
     if dry_run:
@@ -281,7 +291,11 @@ def process_book(pdf_path: str, book_meta: dict, config: dict,
             start_pg = i * per_ch
             end_pg = (i+1)*per_ch-1 if i+1 < len(chapters) else len(doc)-1
 
-        chapter_text, image_parts = split_chapter_pages(doc, start_pg, end_pg)
+        chapter_text, image_parts = split_chapter_pages(
+            doc, start_pg, end_pg,
+            header_ratio=header_ratio, footer_ratio=footer_ratio,
+            trim_refs=trim_refs,
+        )
         if not chapter_text.strip() and not image_parts:
             print(f"    ⚠️  Empty chapter, skipping")
             continue
